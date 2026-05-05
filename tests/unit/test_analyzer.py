@@ -10,8 +10,14 @@ from src.intel.models.results import (
 )
 
 @pytest.fixture
-def analyzer():
-    return ThreatAnalyzer()
+def analyzer(tmp_path):
+    db_file = tmp_path / "test_analyzer_cache.db"
+    with patch("src.intel.core.analyzer.ThreatCache") as mock_cache_class:
+        from src.intel.core.cache import ThreatCache
+        # Create a real cache instance pointing to the temp db
+        real_cache = ThreatCache(db_path=str(db_file))
+        mock_cache_class.return_value = real_cache
+        return ThreatAnalyzer()
 
 class TestThreatAnalyzer:
     """Unit tests for the ThreatAnalyzer core logic."""

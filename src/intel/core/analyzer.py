@@ -6,6 +6,7 @@ from typing import Any
 from src.intel.api.virustotal import VirusTotalClient
 from src.intel.api.abuseipdb import AbuseIPDBClient
 from src.intel.api.shodan import ShodanClient
+from src.intel.core.cache import ThreatCache
 from src.intel.models.indicators import Indicator, IndicatorType
 from src.intel.models.results import (
     ThreatIntelReport, 
@@ -24,6 +25,7 @@ class ThreatAnalyzer:
         self.vt_client = VirusTotalClient()
         self.abuse_client = AbuseIPDBClient()
         self.shodan_client = ShodanClient()
+        self.cache = ThreatCache()
 
     def _calculate_overall_threat_level(
         self, 
@@ -100,7 +102,12 @@ class ThreatAnalyzer:
         Returns:
             A correlated ThreatIntelReport.
         """
-        logger.info("Starting analysis", type=indicator.type.value, value=indicator.value)
+        # 1. Check Cache
+        cached_report = self.cache.get(indicator.value)
+        if cached_report:
+            return cached_report
+
+        logger.info("Starting fresh analysis", type=indicator.type.value, value=indicator.value)
 
         # Run API calls in parallel
         tasks = [
@@ -120,7 +127,7 @@ class ThreatAnalyzer:
         overall_level = self._calculate_overall_threat_level(vt_res, abuse_res)
         summary = self._generate_summary(indicator, overall_level, vt_res, abuse_res, shodan_res)
 
-        return ThreatIntelReport(
+        report = ThreatIntelReport(
             indicator=indicator.value,
             indicator_type=indicator.type,
             scan_timestamp=datetime.now(),
@@ -130,3 +137,8 @@ class ThreatAnalyzer:
             shodan=shodan_res,
             summary=summary
         )
+
+        # 2. Store in Cache
+        self.cache.set(indicator.value, indicator.type.value, report)
+        
+        return report
