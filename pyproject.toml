@@ -1,0 +1,39 @@
+[project]
+name = "threat-intel-dashboard"
+version = "0.1.0"
+description = "Threat Intelligence CLI tool"
+authors = [
+    {name = "Ezequiel Ranieri", email = "ez.ranieri@gmail.com"}
+]
+dependencies = [
+    "typer>=0.12.3",
+    "rich>=13.7.1",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.1",
+    "pydantic-settings>=2.2.1",
+    "structlog>=24.1.0",
+    "reportlab>=4.2.0",
+]
+requires-python = ">=3.12"
+
+[project.scripts]
+threat-intel = "intel.cli:app"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I", "N", "UP"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+packages = ["intel"]
+package_dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -v"
+pythonpath = ["src"]
