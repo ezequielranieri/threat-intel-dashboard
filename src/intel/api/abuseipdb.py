@@ -1,5 +1,6 @@
 import httpx
 import structlog
+import asyncio
 from datetime import datetime
 from src.intel.config import settings
 from src.intel.models.results import AbuseIPDBResult, ThreatLevel
@@ -46,39 +47,54 @@ class AbuseIPDBClient:
             "verbose": True
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, headers=self.headers, params=params)
-                
-                if response.status_code == 429:
-                    logger.warning("AbuseIPDB rate limit exceeded", status_code=429)
-                    return None
-                if response.status_code in (401, 403):
-                    logger.error("AbuseIPDB API key invalid or unauthorized", status_code=response.status_code)
-                    return None
-                
-                response.raise_for_status()
-                data = response.json()["data"]
-                
-                last_reported = None
-                if data.get("lastReportedAt"):
-                    # Format: 2024-05-05T12:00:00+00:00
-                    last_reported = datetime.fromisoformat(data["lastReportedAt"].replace("Z", "+00:00"))
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(url, headers=self.headers, params=params)
+                    
+                    if response.status_code == 429:
+                        if attempt < max_retries:
+                            wait_time = 2**attempt
+                            logger.warning(
+                                "AbuseIPDB rate limit exceeded, retrying...",
+                                attempt=attempt + 1,
+                                wait_time=wait_time
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                        else:
+                            logger.warning("AbuseIPDB rate limit exceeded, max retries reached", status_code=429)
+                            return None
 
-                score = data["abuseConfidenceScore"]
-                
-                return AbuseIPDBResult(
-                    abuse_score=score,
-                    total_reports=data["totalReports"],
-                    last_reported=last_reported,
-                    country=data.get("countryCode"),
-                    isp=data.get("isp"),
-                    threat_level=self._get_threat_level(score)
-                )
+                    if response.status_code in (401, 403):
+                        logger.error("AbuseIPDB API key invalid or unauthorized", status_code=response.status_code)
+                        return None
+                    
+                    response.raise_for_status()
+                    data = response.json()["data"]
+                    
+                    last_reported = None
+                    if data.get("lastReportedAt"):
+                        # Format: 2024-05-05T12:00:00+00:00
+                        last_reported = datetime.fromisoformat(data["lastReportedAt"].replace("Z", "+00:00"))
 
-        except httpx.HTTPStatusError as e:
-            logger.error("AbuseIPDB API error", error=str(e), status_code=e.response.status_code)
-            return None
-        except Exception as e:
-            logger.exception("Unexpected error querying AbuseIPDB", error=str(e))
-            return None
+                    score = data["abuseConfidenceScore"]
+                    
+                    return AbuseIPDBResult(
+                        abuse_score=score,
+                        total_reports=data["totalReports"],
+                        last_reported=last_reported,
+                        country=data.get("countryCode"),
+                        isp=data.get("isp"),
+                        threat_level=self._get_threat_level(score)
+                    )
+
+            except httpx.HTTPStatusError as e:
+                logger.error("AbuseIPDB API error", error=str(e), status_code=e.response.status_code)
+                return None
+            except Exception as e:
+                logger.exception("Unexpected error querying AbuseIPDB", error=str(e))
+                return None
+        
+        return None
