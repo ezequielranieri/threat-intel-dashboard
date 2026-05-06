@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from src.intel.models.indicators import Indicator, IndicatorType
 from src.intel.models.results import ThreatLevel, ThreatIntelReport
 from src.intel.core.analyzer import ThreatAnalyzer
+from src.intel.reports.json_report import JSONReporter
+from src.intel.reports.pdf_report import PDFReporter
 
 app = typer.Typer(
     help="Threat Intelligence Dashboard - Analyze IPs, domains, URLs and hashes.",
